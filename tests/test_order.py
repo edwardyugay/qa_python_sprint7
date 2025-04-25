@@ -1,41 +1,28 @@
-# tests/test_order.py
 import pytest
 import allure
 from src import order
+from src.data import generate_order_payload
 
 @allure.feature("Создание заказа")
-@allure.story("Позитивные сценарии создания заказа с разными вариантами color")
-@pytest.mark.parametrize("colors", [
-    (["BLACK"]),
-    (["GREY"]),
-    (["BLACK", "GREY"]),
-    (None)  # когда поле color не передаётся
-])
-def test_create_order(colors):
-    order_payload = {
-        "firstName": "Test",
-        "lastName": "User",
-        "address": "Test Address",
-        "metroStation": "5",
-        "phone": "1234567890",
-        "rentTime": 5,
-        "deliveryDate": "2025-04-20",
-        "comment": "Test order"
-    }
-    if colors is not None:
-        order_payload["color"] = colors
+class TestCreateOrder:
 
-    response = order.create_order(order_payload)
-    with allure.step("Проверяем статус 201 и наличие поля track в ответе"):
-        assert response.status_code == 201, f"Получен код {response.status_code}"
-        response_json = response.json()
-        assert "track" in response_json, f"Ответ: {response_json}"
+    @allure.title("Позитивные сценарии создания заказа с разными цветами")
+    @allure.story("Параметризованное создание заказа")
+    @pytest.mark.parametrize("colors", [["BLACK"], ["GREY"], ["BLACK","GREY"], None])
+    def test_create_order(self, colors):
+        payload = generate_order_payload(colors)
+        resp = order.create_order(payload)
+        assert resp.status_code == 201
+        j = resp.json()
+        assert "track" in j and isinstance(j["track"], int)
 
 @allure.feature("Список заказов")
-@allure.story("Получение списка заказов")
-def test_list_orders():
-    response = order.list_orders()
-    with allure.step("Проверяем, что статус 200 и orders — это список"):
-        assert response.status_code == 200, f"Получен код {response.status_code}"
-        orders = response.json().get("orders")
-        assert isinstance(orders, list), f"Ожидается список, получено: {orders}"
+class TestListOrders:
+
+    @allure.title("Получение списка заказов")
+    @allure.story("Проверка списка заказов")
+    def test_list_orders(self):
+        resp = order.list_orders()
+        assert resp.status_code == 200
+        j = resp.json()
+        assert "orders" in j and isinstance(j["orders"], list)
