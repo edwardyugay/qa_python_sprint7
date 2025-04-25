@@ -1,154 +1,106 @@
-# tests/test_additional.py
-import pytest
 import allure
-from src import courier, order, utils
+import pytest
+from src import courier, order
+from src.data import generate_order_payload
+from src.utils import generate_courier_data
 
 @allure.feature("Удаление курьера")
 class TestDeleteCourier:
-    @allure.story("Позитивный сценарий – успешное удаление курьера")
+
+    @allure.title("Успешное удаление курьера")
+    @allure.story("Позитивный сценарий – удаление курьера")
     def test_delete_courier_success(self):
-        # Регистрируем курьера
-        data = utils.generate_courier_data()
-        reg_response = courier.register_courier(data)
-        assert reg_response.status_code == 201, "Ошибка регистрации курьера"
-        login_payload = {"login": data["login"], "password": data["password"]}
-        login_response = courier.login_courier(login_payload)
-        courier_id = login_response.json().get("id")
-        delete_response = courier.delete_courier(courier_id)
-        with allure.step("Проверяем, что удаление возвращает {'ok': true}"):
-            assert delete_response.status_code == 200, f"Получен код {delete_response.status_code}"
-            assert delete_response.json().get("ok") is True
+        data = generate_courier_data()
+        r1 = courier.register_courier(data); assert r1.status_code==201
+        r2 = courier.login_courier({"login":data["login"],"password":data["password"]}); assert r2.status_code==200
+        cid = r2.json()["id"]
+        rd = courier.delete_courier(cid)
+        assert rd.status_code==200 and rd.json().get("ok") is True
 
-    @allure.story("Негативный сценарий – запрос без id")
+    @allure.title("Ошибка при отсутствии id курьера")
+    @allure.story("Негативный сценарий – без courierId")
     def test_delete_courier_without_id(self):
-        delete_response = courier.delete_courier(None)
-        with allure.step("Проверяем, что отсутствие id приводит к ошибке"):
-            assert delete_response.status_code in [400, 404]
+        rd = courier.delete_courier(None)
+        assert rd.status_code in (400,404)
+        j = rd.json(); assert "message" in j and j["message"].strip()
 
-    @allure.story("Негативный сценарий – запрос с несуществующим id")
+    @allure.title("Ошибка при несуществующем id курьера")
+    @allure.story("Негативный сценарий – неверный courierId")
     def test_delete_courier_nonexistent_id(self):
-        delete_response = courier.delete_courier(999999)
-        with allure.step("Проверяем, что несуществующий id приводит к ошибке"):
-            assert delete_response.status_code in [400, 404]
+        rd = courier.delete_courier(999999)
+        assert rd.status_code in (400,404)
+        j = rd.json(); assert "message" in j and j["message"].strip()
 
 @allure.feature("Принятие заказа")
 class TestAcceptOrder:
-    @allure.story("Позитивный сценарий – успешное принятие заказа")
+
+    @allure.title("Успешное принятие заказа")
+    @allure.story("Позитивный сценарий – принять заказ")
     def test_accept_order_success(self, courier_fixture):
-        # Используем зарегистрированного курьера
-        data, courier_id = courier_fixture
-        # Создаем заказ
-        order_payload = {
-            "firstName": "Test",
-            "lastName": "User",
-            "address": "Test Address",
-            "metroStation": "5",
-            "phone": "1234567890",
-            "rentTime": 5,
-            "deliveryDate": "2025-04-20",
-            "comment": "Test order"
-        }
-        create_response = order.create_order(order_payload)
-        assert create_response.status_code == 201, "Ошибка создания заказа"
-        track = create_response.json().get("track")
-        assert track is not None, "Отсутствует track"
-        # Получаем order_id по track
-        track_response = order.get_order_by_track(track)
-        assert track_response.status_code == 200, "Ошибка получения заказа по треку"
-        order_obj = track_response.json().get("order", {})
-        order_id = order_obj.get("id")
-        accept_response = order.accept_order(courier_id=courier_id, order_id=order_id)
-        with allure.step("Проверяем, что заказ принят и возвращается {'ok': true}"):
-            assert accept_response.status_code == 200, f"Получен код {accept_response.status_code}"
-            assert accept_response.json().get("ok") is True
+        _, cid = courier_fixture
+        create = order.create_order(generate_order_payload())
+        assert create.status_code==201
+        track = create.json()["track"]
+        oid = order.get_order_by_track(track).json()["order"]["id"]
+        ra = order.accept_order(cid, oid)
+        assert ra.status_code==200 and ra.json().get("ok") is True
 
-    @allure.story("Негативный сценарий – отсутствие id курьера")
+    @allure.title("Ошибка при отсутствии courierId")
+    @allure.story("Негативный сценарий – без courierId")
     def test_accept_order_missing_courier_id(self):
-        # Создаем заказ
-        order_payload = {
-            "firstName": "Test",
-            "lastName": "User",
-            "address": "Test Address",
-            "metroStation": "5",
-            "phone": "1234567890",
-            "rentTime": 5,
-            "deliveryDate": "2025-04-20",
-            "comment": "Test order"
-        }
-        create_response = order.create_order(order_payload)
-        track = create_response.json().get("track")
-        track_response = order.get_order_by_track(track)
-        order_id = track_response.json().get("order", {}).get("id")
-        accept_response = order.accept_order(courier_id=None, order_id=order_id)
-        with allure.step("Проверяем, что отсутствие id курьера приводит к ошибке"):
-            assert accept_response.status_code in [400, 404]
+        create = order.create_order(generate_order_payload()); assert create.status_code==201
+        oid = order.get_order_by_track(create.json()["track"]).json()["order"]["id"]
+        ra = order.accept_order(None, oid)
+        assert ra.status_code in (400,404)
+        j=ra.json(); assert "message" in j and j["message"].strip()
 
-    @allure.story("Негативный сценарий – неверный id курьера")
+    @allure.title("Ошибка при неверном courierId")
+    @allure.story("Негативный сценарий – неверный courierId")
     def test_accept_order_invalid_courier_id(self):
-        # Создаем заказ
-        order_payload = {
-            "firstName": "Test",
-            "lastName": "User",
-            "address": "Test Address",
-            "metroStation": "5",
-            "phone": "1234567890",
-            "rentTime": 5,
-            "deliveryDate": "2025-04-20",
-            "comment": "Test order"
-        }
-        create_response = order.create_order(order_payload)
-        track = create_response.json().get("track")
-        track_response = order.get_order_by_track(track)
-        order_id = track_response.json().get("order", {}).get("id")
-        accept_response = order.accept_order(courier_id=999999, order_id=order_id)
-        with allure.step("Проверяем, что неверный id курьера возвращает ошибку"):
-            assert accept_response.status_code in [400, 404]
+        create = order.create_order(generate_order_payload()); assert create.status_code==201
+        oid = order.get_order_by_track(create.json()["track"]).json()["order"]["id"]
+        ra = order.accept_order(999999, oid)
+        assert ra.status_code in (400,404)
+        j=ra.json(); assert "message" in j and j["message"].strip()
 
-    @allure.story("Негативный сценарий – отсутствие id заказа")
+    @allure.title("Ошибка при отсутствии orderId")
+    @allure.story("Негативный сценарий – без orderId")
     def test_accept_order_missing_order_id(self, courier_fixture):
-        data, courier_id = courier_fixture
-        accept_response = order.accept_order(courier_id=courier_id, order_id=None)
-        with allure.step("Проверяем, что отсутствие id заказа приводит к ошибке"):
-            assert accept_response.status_code in [400, 404]
+        _, cid = courier_fixture
+        ra = order.accept_order(cid, None)
+        assert ra.status_code in (400,404)
+        j=ra.json(); assert "message" in j and j["message"].strip()
 
-    @allure.story("Негативный сценарий – неверный id заказа")
+    @allure.title("Ошибка при неверном orderId")
+    @allure.story("Негативный сценарий – неверный orderId")
     def test_accept_order_invalid_order_id(self, courier_fixture):
-        data, courier_id = courier_fixture
-        accept_response = order.accept_order(courier_id=courier_id, order_id=999999)
-        with allure.step("Проверяем, что неверный id заказа приводит к ошибке"):
-            assert accept_response.status_code in [400, 404]
+        _, cid = courier_fixture
+        ra = order.accept_order(cid, 999999)
+        assert ra.status_code in (400,404)
+        j=ra.json(); assert "message" in j and j["message"].strip()
 
 @allure.feature("Получение заказа по треку")
 class TestGetOrderByTrack:
-    @allure.story("Позитивный сценарий получения заказа")
+
+    @allure.title("Успешное получение заказа по треку")
+    @allure.story("Позитивный сценарий – получить заказ")
     def test_get_order_by_track_success(self):
-        order_payload = {
-            "firstName": "Test",
-            "lastName": "User",
-            "address": "Test Address",
-            "metroStation": "5",
-            "phone": "1234567890",
-            "rentTime": 5,
-            "deliveryDate": "2025-04-20",
-            "comment": "Test order"
-        }
-        create_response = order.create_order(order_payload)
-        assert create_response.status_code == 201, "Ошибка создания заказа"
-        track = create_response.json().get("track")
-        get_response = order.get_order_by_track(track)
-        with allure.step("Проверяем, что заказ получен и в ответе присутствует объект order"):
-            assert get_response.status_code == 200, f"Получен код {get_response.status_code}"
-            order_obj = get_response.json().get("order")
-            assert order_obj is not None, "Объект заказа отсутствует"
+        create = order.create_order(generate_order_payload()); assert create.status_code==201
+        track = create.json()["track"]
+        gr = order.get_order_by_track(track)
+        assert gr.status_code==200
+        j=gr.json(); assert "order" in j and isinstance(j["order"], dict)
 
-    @allure.story("Негативный сценарий – запрос без трека")
+    @allure.title("Ошибка при отсутствии track")
+    @allure.story("Негативный сценарий – без track")
     def test_get_order_by_track_missing_track(self):
-        get_response = order.get_order_by_track(None)
-        with allure.step("Проверяем, что отсутствие трека приводит к ошибке"):
-            assert get_response.status_code in [400, 404]
+        gr = order.get_order_by_track(None)
+        assert gr.status_code in (400,404)
+        j=gr.json(); assert "message" in j and j["message"].strip()
 
-    @allure.story("Негативный сценарий – запрос с несуществующим треком")
+    @allure.title("Ошибка при несуществующем track")
+    @allure.story("Негативный сценарий – неверный track")
     def test_get_order_by_track_invalid_track(self):
-        get_response = order.get_order_by_track("invalid_track")
-        with allure.step("Проверяем, что несуществующий трек приводит к ошибке"):
-            assert get_response.status_code in [400, 404]
+        gr = order.get_order_by_track("invalid")
+        assert gr.status_code in (400,404)
+        j=gr.json(); assert "message" in j and j["message"].strip()
